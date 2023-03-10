@@ -107,3 +107,49 @@ make deploy DEPLOY_HOST={YOUR_EC2_USER_NAME@YOUR_EC2_INSTANCE}
 部署完成之后，将会有一个服务在你的虚拟机中启动，默认端口为`9090`。你可能需要将此端口开放到互联网，参考[这里](https://aws.amazon.com/cn/premiumsupport/knowledge-center/connect-http-https-ec2/)。
 
 完成部署之后，可以在微信公众号中发消息测试。
+
+## 功能说明
+
+### 基本功能
+
+- 验证微信消息签名
+- 调用 OpenAI 的 API 发起聊天
+- 处理微信公众号 API 返回时间限制
+- 处理 token 超长问题
+- 定期清理聊天会话
+- 记录基本聊天统计信息
+- 限制用户聊天次数
+- 支持用户权限配置
+- 支持权限管理
+
+### 管理功能
+
+本项目支持通过微信公众号消息管理服务。
+
+一共定义了以下几类管理命令：
+
+- `add_white_list`: 添加白名单用户。参数为用户的微信 OpenID，可从日志中获取。
+- `remove_white_list`: 移除白名单用户。参数为用户的微信 OpenID，可从日志中获取。
+- `set_limit`: 设置用户对话次数限制。参数为用户的微信 OpenID 及每日对话次数限制，以逗号分隔，如 `user_a,100`表示限制 OpenID 为`user_a`的用户的每天对话次数为 100 次。
+- `set_token`: 设置管理员 token。参数为新的 token 值。
+- `get_config`: 获取配置。无参数，可将参数行设置为 1。
+- `get_stat`: 获取对话统计。无参数，可将参数行设置为 1。
+
+调用命令的方式是通过微信公众号发特定格式的消息。
+
+消息格式如下（消息必须包含三行）：
+
+```
+admin-command:{YOUR_ADMIN_TOKEN}
+{COMAND_NAME}
+{COMMAND_ARGS}
+```
+
+## TODO
+
+- 处理用户发送的图片消息
+- 配置公众号关注消息
+- 消息加解密
+- 更多的管理接口
+- 持久化消息存储
+- 让用户配置模型参数
