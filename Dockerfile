@@ -25,7 +25,8 @@ WORKDIR /app
 COPY ./wechatgpt ./wechatgpt
 
 ENV THREADS 4
+ENV PORT 9090
 
 CMD UWSGI_PYTHONPATH=/app UWSGI_MODULE=wechatgpt.server:app TZ=Asia/Shanghai LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8 PYTHONIOENCODING=UTF-8 \
     UWSGI_LOG_MASTER=true USWGI_THREADED_LOGGER=true UWSGI_SAFE_PIDFILE=/var/run/uwsgi.pid \
-    uwsgi --http :9090 --master --http-workers 1 --http-processes 1 --processes 1 --workers 1 --threads ${THREADS} --stats :9091 --stats-http --enable-threads
+    uwsgi --http :${PORT} --master --http-workers 1 --http-processes 1 --processes 1 --workers 1 --threads ${THREADS} --stats :9091 --stats-http --enable-threads
