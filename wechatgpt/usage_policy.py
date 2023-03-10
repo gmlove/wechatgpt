@@ -109,7 +109,7 @@ class UsagePolicy:
         if len(lines) > 0 and lines[0] == "user_command:get_msg_count":
             return str(self.user_chat_stat.get(user, UserChatStat(user)).chat_count)
 
-        if lines[0] == f"usage-policy-change:{self.token}":
+        if lines[0] == f"admin-command:{self.token}":
             if user not in self.admin_users:
                 get_logger().warn(f"found user {user} try to use admin commands! msg: {msg}")
                 raise Exception("Not enough privilege!")
