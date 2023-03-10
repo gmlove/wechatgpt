@@ -1,0 +1,16 @@
+[MESSAGES CONTROL]
+
+# Enable the message, report, category or checker with the given id(s). You can
+# either give multiple identifier separated by comma (,) or put this option
+# multiple time.
+# enable=
+
+# Disable the message, report, category or checker with the given id(s). You
+# can either give multiple identifier separated by comma (,) or put this option
+# multiple time (only on the command line, not in the configuration file where
+# it should appear only once).
+disable=C0111,C0325,E1129,C0413,c0103,W0703
+
+[TYPECHECK]
+
+ignored-modules = numpy, keras, numpy.random, lxml, lxml.etree

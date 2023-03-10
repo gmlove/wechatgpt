@@ -1,0 +1,12 @@
+data/
+.vscode
+**/__pycache__
+**/_test
+*.pyc
+**/tmp
+**/*.pickle
+**/*.gz
+**/*.zip
+.env
+__test__
+ops/
