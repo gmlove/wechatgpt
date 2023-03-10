@@ -1,6 +1,7 @@
+export token=A_TOKEN_USED_TO_MANAGE_THE_SERVER
+export wechat_token=WECHAT_ACCOUNT_TOKEN
 export chat_gpt_token=YOUR_CHATGPT_TOKEN
 export http_proxy=AN_OPTIONAL_HTTP_PROXY
-export token=A_TOKEN_USED_TO_MANAGE_THE_SERVER
 export admin_user_ids=ADMIN_USER_IDS_SPLI_BY_COMMA
 export white_list_user_ids=WHITELIST_USER_IDS_SPLI_BY_COMMA
 export admin_email=ADMIN_EMAIL_ADDRESS

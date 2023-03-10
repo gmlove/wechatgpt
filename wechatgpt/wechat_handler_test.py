@@ -7,7 +7,7 @@ import requests
 from wechatgpt.bot import ChatgptBot, UserChats
 
 from .usage_policy import UsagePolicy
-from .wechat_handler import Request, WechatMsg, WechatMsgHandler
+from .wechat_handler import Request, WechatMsg, WechatMsgHandler, check_signature
 
 
 class WechatHandlerTest(unittest.TestCase):
@@ -82,3 +82,8 @@ class WechatHandlerTest(unittest.TestCase):
         </xml>""",
         )
         print(resp.content)
+
+
+class CheckSignatureTest(unittest.TestCase):
+    def test_check_signature(self):
+        self.assertFalse(check_signature("??", "082573e32ee902b7a7b3833f98e2d4b4a4adc507", "1678200460", "1888015449"))

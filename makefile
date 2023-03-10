@@ -20,6 +20,7 @@ deploy:
 		-e chat_gpt_token=$${chat_gpt_token} \
 		-e http_proxy=$${http_proxy} \
 		-e token=$${token} \
+		-e wechat_token=$${wechat_token} \
 		-e admin_user_ids=$${admin_user_ids} \
 		-e white_list_user_ids=$${white_list_user_ids} \
 		-e admin_email=$${admin_email} \

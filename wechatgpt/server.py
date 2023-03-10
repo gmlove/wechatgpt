@@ -9,7 +9,7 @@ from flask import request as flask_request
 from flask import Request as FlaskRequest
 from . import logger as commonLogger
 
-from .wechat_handler import Request, Response, WechatEchoMsgHandler, WechatMsgHandler, UsagePolicy
+from .wechat_handler import Request, Response, WechatEchoMsgHandler, WechatMsgHandler, UsagePolicy, check_signature
 from .bot import ChatgptBot, UserChats
 
 
@@ -39,6 +39,7 @@ up = UsagePolicy(
     os.environ["admin_user_ids"].split(","), user_white_list=set(os.environ["white_list_user_ids"].split(",")), token=os.environ["token"]
 )
 admin_email = os.environ["admin_email"]
+wechat_token = os.environ["wechat_token"]
 wechat_msg_handler = WechatMsgHandler(bot, up, admin_email)
 wechat_echo_handler = WechatEchoMsgHandler()
 
@@ -53,7 +54,13 @@ def wechat():
     logger.info("request received: %s", request)
     try:
         if flask_request.method == "POST":
-            response = wechat_msg_handler.handle(request)
+            sig = flask_request.args.get("signature", "")
+            timestamp = flask_request.args.get("timestamp", "")
+            nonce = flask_request.args.get("nonce", "")
+            if check_signature(wechat_token, sig, timestamp, nonce):
+                response = wechat_msg_handler.handle(request)
+            else:
+                response = Response(None, 403, "")
         else:
             response = wechat_echo_handler.handle(request)
     except Exception as e:

@@ -3,7 +3,6 @@ import random
 import threading
 import time
 import requests
-from urllib import parse
 
 from .server import app
 

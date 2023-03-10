@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 
 import random
 import time
@@ -199,3 +200,9 @@ class WechatEchoMsgHandler:
         headers = {"Content-Type": "text/xml"}
         status_code = 200
         return Response(headers, status_code, request.query["echostr"])
+
+
+def check_signature(token: str, signature: str, timestamp: str, nonce: str) -> bool:
+    data = "".join(sorted([token, timestamp, nonce]))
+    expected_sig = hashlib.sha1(data.encode()).hexdigest()
+    return expected_sig == signature

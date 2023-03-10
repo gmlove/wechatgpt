@@ -4,7 +4,8 @@ RUN apt-get update && apt-get install -y vim curl
 RUN apt-get install -y python3 python3-pip
 
 RUN mkdir /root/.pip
-COPY pip.conf /root/.pip/pip.conf
+# If you're deploying to some host in china, please uncomment this to build image faster.
+# COPY pip.conf /root/.pip/pip.conf
 
 RUN pip3 install --upgrade pip
 # after upgrade pip, the pip3 command will not be working
