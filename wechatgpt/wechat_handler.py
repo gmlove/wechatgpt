@@ -194,7 +194,7 @@ class WechatMsgHandler:
             assert isinstance(request_msg.content, TextMessageContent)
 
             def is_getting_user_id_command(msg: str) -> bool:
-                return msg.lower().replace(" ", "") in ("My ID".lower(), "我的微信ID".lower(), "微信ID".lower())
+                return msg.lower().replace(" ", "") in ("MyID".lower(), "我的微信ID".lower(), "微信ID".lower())
 
             if is_getting_user_id_command(request_msg.content.text):
                 return self.as_response(self.msg_creator(request_msg, request_msg.from_user_name))
