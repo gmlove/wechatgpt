@@ -34,11 +34,11 @@ class UsagePolicyTest(unittest.TestCase):
         up.on_chat("c")
         self.assertTrue(up.reached_limit("c"))
 
-        self.assertFalse(up.handle_usage_change_command("a", "some normal msg"))
-        self.assertFalse(up.handle_usage_change_command("b", "some normal msg"))
+        self.assertFalse(up.handle_usage_change_command("a", "some normal msg", {}))
+        self.assertFalse(up.handle_usage_change_command("b", "some normal msg", {}))
 
-        self.assertRaises(Exception, lambda: up.handle_usage_change_command("b", "admin-command:c\nset_limit"))
-        self.assertRaises(CommandFormatError, lambda: up.handle_usage_change_command("a", "admin-command:c\nset_limit"))
+        self.assertRaises(Exception, lambda: up.handle_usage_change_command("b", "admin-command:c\nset_limit", {}))
+        self.assertRaises(CommandFormatError, lambda: up.handle_usage_change_command("a", "admin-command:c\nset_limit", {}))
 
-        self.assertTrue(up.handle_usage_change_command("a", "admin-command:c\nset_limit\nd,10"))
+        self.assertTrue(up.handle_usage_change_command("a", "admin-command:c\nset_limit\nd,10", {}))
         self.assertEqual(up.user_chat_count_per_day["d"], 10)

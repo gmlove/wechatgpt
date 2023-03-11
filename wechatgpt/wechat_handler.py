@@ -199,7 +199,7 @@ class WechatMsgHandler:
             if is_getting_user_id_command(request_msg.content.text):
                 return self.as_response(self.msg_creator(request_msg, request_msg.from_user_name))
 
-            msg = self.usage_policy.handle_usage_change_command(request_msg.from_user_name, request_msg.content.text)
+            msg = self.usage_policy.handle_usage_change_command(request_msg.from_user_name, request_msg.content.text, self.chating_users)
             if isinstance(msg, str) or msg is True:
                 return self.as_response(self.command_handle_success_msg_creator(request_msg, msg if isinstance(msg, str) else ""))
         except CommandFormatError as e:

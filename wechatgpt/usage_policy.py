@@ -86,7 +86,7 @@ class UsagePolicy:
                 print("save config error!")
                 traceback.print_exc()
 
-    def get_stat(self) -> dict:
+    def get_stat(self, chatting_users: Dict[str, bool]) -> dict:
         user_total_chat_count = [u.total_chat_count for u in self.user_chat_stat.values()]
         now = datetime.now()
         today = datetime(now.year, now.month, now.day)
@@ -102,9 +102,10 @@ class UsagePolicy:
             "today_max_user_chat_count": max(today_user_chat_count) if len(today_user_chat_count) else 0,
             "today_min_user_chat_count": min(today_user_chat_count) if len(today_user_chat_count) else 0,
             "today_avg_user_chat_count": sum(today_user_chat_count) / len(today_user_chat_count) if len(today_user_chat_count) else 0,
+            "chatting_user_count": len(chatting_users),
         }
 
-    def handle_usage_change_command(self, user: str, msg: str) -> Union[bool, str]:
+    def handle_usage_change_command(self, user: str, msg: str, chatting_users: Dict[str, bool]) -> Union[bool, str]:
         lines = [line.strip() for line in msg.split("\n") if line.strip()]
         if len(lines) > 0 and lines[0] == "user_command:get_msg_count":
             return str(self.user_chat_stat.get(user, UserChatStat(user)).chat_count)
@@ -135,13 +136,16 @@ class UsagePolicy:
                     raise CommandFormatError(f"Args for set limit must be `{{user_id}}, {{count}}`, found {lines[2]}")
                 self.token = token
             elif cmd == "get_config":
-                return json.dumps(self.as_dict(), ensure_ascii=False, indent=2)
+                return self.dict_to_msg(self.as_dict())
             elif cmd == "get_stat":
-                return json.dumps(self.get_stat(), ensure_ascii=False, indent=2)
+                return self.dict_to_msg(self.get_stat(chatting_users))
             else:
                 raise CommandFormatError("Unknown command: " + cmd)
             return True
         return False
+
+    def dict_to_msg(self, dict_msg: dict) -> str:
+        return "\n".join([f"{k}: {v}" for k, v in dict_msg.items()])
 
     def add_white_list(self, user: str):
         get_logger().info(f"add user to white list: {user}")
