@@ -3,7 +3,7 @@ import hashlib
 
 import random
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, Union
 from urllib import parse
 
 from wechatgpt.usage_policy import CommandFormatError, UsagePolicy
@@ -99,69 +99,43 @@ class WechatMsgHandler:
     def accept(self, request):
         return request.path == "/wechat" and request.method == "POST"
 
-    def handle(self, request) -> Response:
+    def as_response(self, msg: Union[str, WechatMsg], status_code: int = 200) -> Response:
         headers = {"Content-Type": "text/xml"}
-        status_code = 200
+        return Response(headers, status_code, msg.xml_str() if isinstance(msg, WechatMsg) else msg)
+
+    def empty_response(self) -> Response:
+        return self.as_response("")
+
+    def handle(self, request) -> Response:
         try:
             request_msg = WechatMsg.from_raw_xml(request.body)
         except Exception as e:
             get_logger().info("unable to parse message, will ignore it.")
-            return Response(headers, status_code, "")
+            return self.empty_response()
 
         if not isinstance(request_msg.content, TextMessageContent):
             get_logger().info("found unknown message, will ignore it.")
-            return Response(headers, status_code, "")
+            return self.empty_response()
 
-        try:
-            msg = self.usage_policy.handle_usage_change_command(request_msg.from_user_name, request_msg.content.text)
-            if isinstance(msg, str) or msg is True:
-                return Response(
-                    headers,
-                    status_code,
-                    self.command_handle_success_msg_creator(
-                        request_msg.from_user_name, request_msg.to_user_name, msg if isinstance(msg, str) else ""
-                    ).xml_str(),
-                )
-        except CommandFormatError as e:
-            get_logger().info("command format error found: " + e.args[0])
-            return Response(
-                headers,
-                status_code,
-                self.command_handle_failed_msg_creator(request_msg.from_user_name, request_msg.to_user_name, e.args[0]).xml_str(),
-            )
+        resp = self.handle_command(request_msg)
+        if resp:
+            return resp
 
         if self.usage_policy.reached_limit(request_msg.from_user_name):
-            return Response(headers, status_code, self.rate_limit_msg_creator(request_msg.from_user_name, request_msg.to_user_name).xml_str())
+            return self.as_response(self.rate_limit_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
 
-        # if there is a waiting message
-        if request_msg.from_user_name in self.chating_users:
-            # if user is asking some other things, just reply that it's too fast.
-            if request_msg.content.text != "1" and request_msg.content.text != self.chating_user_asks.get(request_msg.from_user_name, None):
-                return Response(headers, status_code, self.ask_too_fast_msg_creator(request_msg.from_user_name, request_msg.to_user_name).xml_str())
+        resp = self.handle_for_waiting_chat(request_msg)
+        if resp:
+            return resp
 
-            # wechat server send 3 times for response or user typed '1' to get a reply
-            # wait a moment for the answer, if still no, reply a following hint.
-            wait_count = 0
-            while request_msg.from_user_name in self.chating_users:
-                if wait_count >= 3:
-                    get_logger().info("already waited for 3s, will return a pre-defined message.")
-                    return Response(
-                        headers, status_code, self.wait_timeout_msg_creator(request_msg.from_user_name, request_msg.to_user_name).xml_str()
-                    )
-                time.sleep(1)
-                wait_count += 1
-            return Response(headers, status_code, self.chating_user_answers[request_msg.from_user_name].xml_str())
+        resp = self.handle_for_getting_last_reply(request_msg)
+        if resp:
+            return resp
 
-        # if user would like to get the recent reply
-        if request_msg.content.text == "1" and request_msg.from_user_name in self.chating_user_answers:
-            # This is to resolve a issue with wechat server. If we keep return the same correct msg, wechat will recognize it as an error.
-            # Dont know why right now. We just return a correct message randomly here.
-            if random.random() < 0.5:
-                return Response(headers, status_code, self.wait_timeout_msg_creator(request_msg.from_user_name, request_msg.to_user_name).xml_str())
-            msg = self.chating_user_answers[request_msg.from_user_name]
-            msg = msg.copy()
-            return Response(headers, status_code, msg.xml_str())
+        return self.handle_for_normal_chat(request_msg)
 
+    def handle_for_normal_chat(self, request_msg: WechatMsg) -> Response:
+        assert isinstance(request_msg.content, TextMessageContent)
         # normal flow
         self.chating_users[request_msg.from_user_name] = True
         self.chating_user_asks[request_msg.from_user_name] = request_msg.content.text
@@ -174,19 +148,61 @@ class WechatMsgHandler:
                 msg_type=msg_type,
             )
             self.chating_user_answers[request_msg.from_user_name] = response_msg
-            return Response(headers, status_code, response_msg.xml_str())
+            return self.as_response(response_msg)
         except Exception as e:
             get_logger().error("Error found: " + str(e), exc_info=True)
-            return Response(headers, status_code, self.system_error_msg_creator(request_msg.from_user_name, request_msg.to_user_name).xml_str())
+            return self.as_response(self.system_error_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
         finally:
             self.usage_policy.on_chat(request_msg.from_user_name)
             del self.chating_users[request_msg.from_user_name]
+
+    def handle_for_waiting_chat(self, request_msg: WechatMsg) -> Optional[Response]:
+        assert isinstance(request_msg.content, TextMessageContent)
+        # if there is a waiting message
+        if request_msg.from_user_name in self.chating_users:
+            # if user is asking some other things, just reply that it's too fast.
+            if request_msg.content.text != "1" and request_msg.content.text != self.chating_user_asks.get(request_msg.from_user_name, None):
+                return self.as_response(self.ask_too_fast_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
+
+            # wechat server send 3 times for response or user typed '1' to get a reply
+            # wait a moment for the answer, if still no, reply a following hint.
+            wait_count = 0
+            while request_msg.from_user_name in self.chating_users:
+                if wait_count >= 3:
+                    get_logger().info("already waited for 3s, will return a pre-defined message.")
+                    return self.as_response(self.wait_timeout_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
+                time.sleep(1)
+                wait_count += 1
+            return self.as_response(self.chating_user_answers[request_msg.from_user_name])
+
+    def handle_for_getting_last_reply(self, request_msg: WechatMsg) -> Optional[Response]:
+        assert isinstance(request_msg.content, TextMessageContent)
+        # if user would like to get the recent reply
+        if request_msg.content.text == "1" and request_msg.from_user_name in self.chating_user_answers:
+            # This is to resolve a issue with wechat server. If we keep return the same correct msg, wechat will recognize it as an error.
+            # Dont know why right now. We just return a correct message randomly here.
+            if random.random() < 0.5:
+                return self.as_response(self.wait_timeout_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
+            msg = self.chating_user_answers[request_msg.from_user_name]
+            return self.as_response(msg)
 
     def answer_for_question(self, user: str, question: str):
         answer = self.bot.answer(user, question)
         if isinstance(answer, tuple):
             return answer[0], answer
         return "text", answer.strip()
+
+    def handle_command(self, request_msg: WechatMsg) -> Optional[Response]:
+        try:
+            assert isinstance(request_msg.content, TextMessageContent)
+            msg = self.usage_policy.handle_usage_change_command(request_msg.from_user_name, request_msg.content.text)
+            if isinstance(msg, str) or msg is True:
+                return self.as_response(
+                    self.command_handle_success_msg_creator(request_msg.from_user_name, request_msg.to_user_name, msg if isinstance(msg, str) else "")
+                )
+        except CommandFormatError as e:
+            get_logger().info("command format error found: " + e.args[0])
+            return self.as_response(self.command_handle_failed_msg_creator(request_msg.from_user_name, request_msg.to_user_name, e.args[0]))
 
 
 class WechatEchoMsgHandler:
