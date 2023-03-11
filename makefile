@@ -8,6 +8,7 @@ start:
 
 DEPLOY_HOST=YOUR_CHATGPT_DEPLOY_HOST
 PORT=9090
+THREADS=20
 deploy:
 	- rm -r build
 	mkdir build
@@ -18,6 +19,7 @@ deploy:
 	ssh ${DEPLOY_HOST} "cd tmp/wechatgpt/${VER}/ && tar xf app.tar.gz && make build-image IMAGE_NAME=${IMAGE_NAME}:${VER}"
 	- ssh ${DEPLOY_HOST} "docker logs wechatgpt-api > tmp/wechatgpt/logs/wechatgpt-api.${VER}.log && docker stop wechatgpt-api && docker rm wechatgpt-api"
 	ssh ${DEPLOY_HOST} 'source tmp/wechatgpt/${VER}/.env && docker run -d -p ${PORT}:${PORT} \
+	 	-e THREADS=${THREADS} \
 		-e chat_gpt_token=$${chat_gpt_token} \
 		-e http_proxy=$${http_proxy} \
 		-e token=$${token} \
