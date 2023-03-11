@@ -3,13 +3,13 @@ import hashlib
 
 import random
 import time
-from typing import Optional, Dict, Union
+from typing import Callable, Optional, Dict, Union
 from urllib import parse
 
 from wechatgpt.usage_policy import CommandFormatError, UsagePolicy
 from wechatgpt.wechat_msg import TextMessageContent, WechatMsg
 
-from .bot import ChatgptBot
+from .bot import Bot
 from .logger import get_logger
 
 
@@ -48,48 +48,45 @@ class Request:
 
 
 class WechatMsgHandler:
-    def __init__(self, bot: ChatgptBot, usage_policy: UsagePolicy, admin_email: str):
+    def __init__(self, bot: Bot, usage_policy: UsagePolicy, admin_email: str):
         self.bot = bot
         self.usage_policy = usage_policy
         self.admin_email = admin_email
         self.chating_users: Dict[str, bool] = {}
         self.chating_user_asks: Dict[str, str] = {}
         self.chating_user_answers: Dict[str, WechatMsg] = {}
-        self.wait_timeout_msg_creator = lambda to_user, from_user: WechatMsg(
-            to_user,
-            from_user,
-            "这个问题有点难，助手还在思考中...\n\n回复“1”查看回复。",
-            msg_type="text",
+
+        def create_response_msg_creator(predefined_msg: Union[str, Callable[[WechatMsg], str]]) -> Callable[[WechatMsg], WechatMsg]:
+            def response_msg_creator(request_msg: WechatMsg) -> WechatMsg:
+                _msg = predefined_msg if isinstance(predefined_msg, str) else predefined_msg(request_msg)
+                return WechatMsg(request_msg.from_user_name, request_msg.to_user_name, _msg, msg_type="text")
+
+            return response_msg_creator
+
+        self.wait_timeout_msg_creator = create_response_msg_creator("这个问题有点难，助手还在思考中...\n\n回复“1”查看回复。")
+        self.ask_too_fast_msg_creator = create_response_msg_creator("抱歉，您的回复太快啦，助手还在思考前一个问题呢！\n\n回复“1”查看前一个问题的回复。")
+        self.system_error_msg_creator = create_response_msg_creator("抱歉，系统错误，请稍候再试！")
+        self.rate_limit_msg_creator = create_response_msg_creator(
+            lambda request_msg: f"抱歉，您今日的聊天次数已达上限，请明日再来！\n\n如希望解除限制，请发送您的ID({request_msg.from_user_name})至邮箱 {self.admin_email} ，并附上一个充分的理由。",
         )
-        self.ask_too_fast_msg_creator = lambda to_user, from_user: WechatMsg(
-            to_user,
-            from_user,
-            "抱歉，您的回复太快啦，助手还在思考前一个问题呢！\n\n回复“1”查看前一个问题的回复。",
-            msg_type="text",
+
+        def create_response_msg_creator_with_user_msg(
+            predefined_msg_creator: Callable[[WechatMsg, str], str]
+        ) -> Callable[[WechatMsg, str], WechatMsg]:
+            def response_msg_creator(request_msg: WechatMsg, msg: str) -> WechatMsg:
+                _msg = predefined_msg_creator(request_msg, msg)
+                return WechatMsg(request_msg.from_user_name, request_msg.to_user_name, _msg, msg_type="text")
+
+            return response_msg_creator
+
+        self.command_handle_success_msg_creator = create_response_msg_creator_with_user_msg(
+            lambda _, msg: f"操作成功！\n\n{msg}" if msg else "操作成功！",
         )
-        self.system_error_msg_creator = lambda to_user, from_user: WechatMsg(
-            to_user,
-            from_user,
-            "抱歉，系统错误，请稍候再试！",
-            msg_type="text",
+        self.command_handle_failed_msg_creator = create_response_msg_creator_with_user_msg(
+            lambda _, msg: f"操作失败，命令格式错误： {msg}",
         )
-        self.rate_limit_msg_creator = lambda to_user, from_user: WechatMsg(
-            to_user,
-            from_user,
-            f"抱歉，您今日的聊天次数已达上限，请明日再来！\n\n如希望解除限制，请发送您的ID({to_user})至邮箱 {self.admin_email} ，并附上一个充分的理由。",
-            msg_type="text",
-        )
-        self.command_handle_success_msg_creator = lambda to_user, from_user, msg: WechatMsg(
-            to_user,
-            from_user,
-            f"操作成功！\n\n{msg}" if msg else "操作成功！",
-            msg_type="text",
-        )
-        self.command_handle_failed_msg_creator = lambda to_user, from_user, msg: WechatMsg(
-            to_user,
-            from_user,
-            f"操作失败，命令格式错误：" + msg,
-            msg_type="text",
+        self.msg_creator = create_response_msg_creator_with_user_msg(
+            lambda _, msg: msg,
         )
 
     def xml_response(self, req: WechatMsg, response_text: str) -> str:
@@ -110,7 +107,7 @@ class WechatMsgHandler:
         try:
             request_msg = WechatMsg.from_raw_xml(request.body)
         except Exception as e:
-            get_logger().info("unable to parse message, will ignore it.")
+            get_logger().info(f"unable to parse message, will ignore it: {e.args}")
             return self.empty_response()
 
         if not isinstance(request_msg.content, TextMessageContent):
@@ -122,7 +119,7 @@ class WechatMsgHandler:
             return resp
 
         if self.usage_policy.reached_limit(request_msg.from_user_name):
-            return self.as_response(self.rate_limit_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
+            return self.as_response(self.rate_limit_msg_creator(request_msg))
 
         resp = self.handle_for_waiting_chat(request_msg)
         if resp:
@@ -151,7 +148,7 @@ class WechatMsgHandler:
             return self.as_response(response_msg)
         except Exception as e:
             get_logger().error("Error found: " + str(e), exc_info=True)
-            return self.as_response(self.system_error_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
+            return self.as_response(self.system_error_msg_creator(request_msg))
         finally:
             self.usage_policy.on_chat(request_msg.from_user_name)
             del self.chating_users[request_msg.from_user_name]
@@ -162,7 +159,7 @@ class WechatMsgHandler:
         if request_msg.from_user_name in self.chating_users:
             # if user is asking some other things, just reply that it's too fast.
             if request_msg.content.text != "1" and request_msg.content.text != self.chating_user_asks.get(request_msg.from_user_name, None):
-                return self.as_response(self.ask_too_fast_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
+                return self.as_response(self.ask_too_fast_msg_creator(request_msg))
 
             # wechat server send 3 times for response or user typed '1' to get a reply
             # wait a moment for the answer, if still no, reply a following hint.
@@ -170,7 +167,7 @@ class WechatMsgHandler:
             while request_msg.from_user_name in self.chating_users:
                 if wait_count >= 3:
                     get_logger().info("already waited for 3s, will return a pre-defined message.")
-                    return self.as_response(self.wait_timeout_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
+                    return self.as_response(self.wait_timeout_msg_creator(request_msg))
                 time.sleep(1)
                 wait_count += 1
             return self.as_response(self.chating_user_answers[request_msg.from_user_name])
@@ -182,7 +179,7 @@ class WechatMsgHandler:
             # This is to resolve a issue with wechat server. If we keep return the same correct msg, wechat will recognize it as an error.
             # Dont know why right now. We just return a correct message randomly here.
             if random.random() < 0.5:
-                return self.as_response(self.wait_timeout_msg_creator(request_msg.from_user_name, request_msg.to_user_name))
+                return self.as_response(self.wait_timeout_msg_creator(request_msg))
             msg = self.chating_user_answers[request_msg.from_user_name]
             return self.as_response(msg)
 
@@ -195,14 +192,19 @@ class WechatMsgHandler:
     def handle_command(self, request_msg: WechatMsg) -> Optional[Response]:
         try:
             assert isinstance(request_msg.content, TextMessageContent)
+
+            def is_getting_user_id_command(msg: str) -> bool:
+                return msg.lower().replace(" ", "") in ("My ID".lower(), "我的微信ID".lower(), "微信ID".lower())
+
+            if is_getting_user_id_command(request_msg.content.text):
+                return self.as_response(self.msg_creator(request_msg, request_msg.from_user_name))
+
             msg = self.usage_policy.handle_usage_change_command(request_msg.from_user_name, request_msg.content.text)
             if isinstance(msg, str) or msg is True:
-                return self.as_response(
-                    self.command_handle_success_msg_creator(request_msg.from_user_name, request_msg.to_user_name, msg if isinstance(msg, str) else "")
-                )
+                return self.as_response(self.command_handle_success_msg_creator(request_msg, msg if isinstance(msg, str) else ""))
         except CommandFormatError as e:
             get_logger().info("command format error found: " + e.args[0])
-            return self.as_response(self.command_handle_failed_msg_creator(request_msg.from_user_name, request_msg.to_user_name, e.args[0]))
+            return self.as_response(self.command_handle_failed_msg_creator(request_msg, e.args[0]))
 
 
 class WechatEchoMsgHandler:

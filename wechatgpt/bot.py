@@ -104,7 +104,12 @@ class UserChats:
         return msgs
 
 
-class ChatgptBot:
+class Bot:
+    def answer(self, user: str, question: str) -> str:
+        raise NotImplementedError()
+
+
+class ChatgptBot(Bot):
     def __init__(
         self,
         token: str,

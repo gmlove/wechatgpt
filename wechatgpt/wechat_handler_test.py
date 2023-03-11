@@ -4,7 +4,7 @@ from datetime import datetime
 
 import requests
 
-from wechatgpt.bot import ChatgptBot, UserChats
+from wechatgpt.bot import Bot
 
 from .usage_policy import UsagePolicy
 from .wechat_handler import Request, WechatMsg, WechatMsgHandler, check_signature
@@ -35,7 +35,6 @@ class WechatHandlerTest(unittest.TestCase):
         self.assertEqual(msg.from_user_name, "test_from_user")
         self.assertEqual(msg.content.text, "。。我是谁")  # type: ignore
 
-    @unittest.skip("integration test")
     def test_wechat_handler(self):
         request = Request(
             "POST",
@@ -65,7 +64,11 @@ class WechatHandlerTest(unittest.TestCase):
         self.assertIsNotNone(response_msg.content)
 
     def create_wechat_msg_handler(self):
-        return WechatMsgHandler(ChatgptBot(os.environ["token"], UserChats()), UsagePolicy([]), "")
+        class MockBot(Bot):
+            def answer(self, user: str, question: str) -> str:
+                return ""
+
+        return WechatMsgHandler(MockBot(), UsagePolicy([]), "")
 
     @unittest.skip("integration test")
     def test_chatgpt_chat(self):
